@@ -1,5 +1,6 @@
 from typing import Tuple
 import torch
+import math
 
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
     """
@@ -50,8 +51,6 @@ def apply_rotary_emb(
 
     _, seqlen, _, _ = query.shape
     device = query.device
-    # todo
-    #
     # Please refer to Lecture 5 slides in https://cmu-l3.github.io/anlp-fall2025/static_files/anlp-f2025-05-transformers.pdf
     # and Section 3 in https://arxiv.org/abs/2104.09864.
 
@@ -60,16 +59,25 @@ def apply_rotary_emb(
     key_real, key_imag = key.float().reshape(key.shape[:-1] + (-1, 2)).unbind(-1)
     # This separates each query/key vector into its odd and even indices (assuming *one-indexing*).
     # query_real contains q_1, q_3, q_5, ... and query_imag contains q_2, q_4, q_6, ...
-
+    
     # First, compute the trigonometric values in the second and fourth columns in
     # slide 49 (linked above).
 
     # Then, combine these trigonometric values with the tensors query_real, query_imag,
     # key_real, and key_imag.
 
-    raise NotImplementedError
+    indices = torch.arange(0, head_dim, 2, device=device)
+    omega = torch.exp(-1 * (indices / head_dim) * math.log(theta))
+    pos = torch.arange(0, seqlen, device=device).unsqueeze(1)
+    phi = pos * omega
+    cos_phi = reshape_for_broadcast(torch.cos(phi), query_real)
+    sin_phi = reshape_for_broadcast(torch.sin(phi), query_real)
+    querya = query_real * cos_phi - query_imag * sin_phi
+    queryb = query_real * sin_phi + query_imag * cos_phi
+    keya = key_real * cos_phi - key_imag * sin_phi
+    keyb = key_real * sin_phi + key_imag * cos_phi
 
-    query_out = None
-    key_out = None
+    query_out = torch.stack([querya, queryb], dim=-1).reshape(query.shape).type_as(query)
+    key_out = torch.stack([keya, keyb], dim=-1).reshape(key.shape).type_as(key)
     # Return the rotary position embeddings for the query and key tensors
     return query_out, key_out
