@@ -35,7 +35,7 @@ class AdamW(Optimizer):
 
             # TODO: Clip gradients if max_grad_norm is set
             if group['max_grad_norm'] is not None:
-                raise NotImplementedError()
+                torch.nn.utils.clip_grad_norm_(group["params"], group["max_grad_norm"])
             
             for p in group["params"]:
                 if p.grad is None:
@@ -44,23 +44,39 @@ class AdamW(Optimizer):
                 if grad.is_sparse:
                     raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
 
-                raise NotImplementedError()
 
                 # State should be stored in this dictionary
                 state = self.state[p]
 
+                if len(state) == 0:
+                    state["step"] = 0
+                    state["m"] = torch.zeros_like(p)
+                    state["v"] = torch.zeros_like(p)
+                state["step"] += 1
                 # TODO: Access hyperparameters from the `group` dictionary
                 alpha = group["lr"]
+                beta1, beta2 = group["betas"]
 
                 # TODO: Update first and second moments of the gradients
+                g_square = grad ** 2
+                state["m"] = beta1 * state["m"] + (1 - beta1)*grad
+                state["v"] = beta2 * state["v"] + (1 - beta2)*g_square
 
                 # TODO: Bias correction
                 # Please note that we are using the "efficient version" given in Algorithm 2 
                 # https://arxiv.org/pdf/1711.05101
+                alpha_t = alpha
+                if group["correct_bias"] == True:
+                    t = state["step"]
+                    alpha_t=(1 - beta2 ** t) ** 0.5 * alpha / (1 - beta1 ** t)
 
                 # TODO: Update parameters
-
+                with torch.no_grad():
+                    m_t = state["m"]
+                    v_t = state["v"]
+                    eps = group["eps"]
+                    p.sub_(alpha_t * m_t / (v_t ** 0.5 + eps))
                 # TODO: Add weight decay after the main gradient-based updates.
                 # Please note that the learning rate should be incorporated into this update.
-
+                    p.sub_(alpha * group["weight_decay"]*p.data)
         return loss
