@@ -288,12 +288,9 @@ class Llama(LlamaPreTrainedModel):
             # forward the model to get the logits for the index in the sequence
             logits, _ = self(idx_cond)
             logits = logits[:, -1, :] # crop to just the final time step
-            # todo
-            raise NotImplementedError
             
             if temperature == 0.0:
-                # select the single most likely index
-                idx_next = None
+                idx_next = torch.argmax(logits, dim=1, keepdim=True)
             else:
                 '''
                 Perform temperature sampling with epsilon sampling:
@@ -303,7 +300,15 @@ class Llama(LlamaPreTrainedModel):
                 4) Renormalize the filtered probabilities so they sum to 1.
                 5) Sample from this filtered probability distribution.
                 '''
-                idx_next = None
+                logits_norm = logits / temperature
+                probs = torch.softmax(logits_norm, dim=1)
+                max_idx = probs.argmax(dim = 1, keepdim=True)
+                mask = torch.zeros_like(probs)
+                mask = mask.scatter_(dim = 1, index = max_idx, value=1)
+                mask = torch.masked_fill(mask, probs >= epsilon, 1)
+                probs = probs * mask
+                probs = probs / torch.sum(probs, dim = 1, keepdim = True)
+                idx_next = torch.multinomial(probs, num_samples=1)
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=1)
         
