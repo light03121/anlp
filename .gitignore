@@ -1,1 +1,8 @@
 stories42M.pt
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]
+
+# Model checkpoints
+*.pt
